@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/df-mc/dragonfly/server/event"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/oomph-ac/oconfig"
 	"github.com/oomph-ac/oomph/entity"
@@ -424,7 +425,7 @@ func (p *Player) StartTicking() {
 	for {
 		select {
 		case <-t.C:
-			if !p.tick() {
+			if !p.Tick() {
 				return
 			}
 		case <-p.CloseChan:
@@ -433,8 +434,8 @@ func (p *Player) StartTicking() {
 	}
 }
 
-// tick ticks handlers and checks, and also flushes connections. It returns false if the player should be removed.
-func (p *Player) tick() bool {
+// Tick ticks handlers and checks, and also flushes connections. It returns false if the player should be removed.
+func (p *Player) Tick() bool {
 	p.procMu.Lock()
 	defer p.procMu.Unlock()
 
@@ -463,12 +464,19 @@ func (p *Player) tick() bool {
 		return false
 	}
 	p.ACKs().Flush()
-	if err := p.conn.Flush(); err != nil {
-		return false
+
+	if h := p.eventHandler; h != nil {
+		h.HandleTick(event.C(p))
 	}
-	if srvConn, ok := p.serverConn.(*minecraft.Conn); ok {
-		if err := srvConn.Flush(); err != nil {
+
+	if !p.MState.IsReplay {
+		if err := p.conn.Flush(); err != nil {
 			return false
+		}
+		if srvConn, ok := p.serverConn.(*minecraft.Conn); ok {
+			if err := srvConn.Flush(); err != nil {
+				return false
+			}
 		}
 	}
 	return true
